@@ -393,6 +393,41 @@ app.get("/api/recipes", async (_req: Request, res: Response) => {
   }
 });
 
+app.get("/api/recipes/home", async (_req: Request, res: Response) => {
+  try {
+    const connection = await pool.getConnection();
+
+    try {
+      const recipes: DbRecipe[] = await connection.query(
+        `SELECT * FROM recipes
+         WHERE
+           countryOfOrigin = 'France'
+           OR (
+             lastViewedAt IS NOT NULL
+             AND lastViewedAt >= NOW() - INTERVAL 10 DAY
+           )
+         ORDER BY views DESC, lastViewedAt DESC
+         LIMIT 10`
+      );
+
+      const formattedRecipes = recipes.map((recipe) => ({
+        ...recipe,
+        id: Number(recipe.id),
+        authorId: Number(recipe.authorId),
+        views: Number(recipe.views),
+        difficulty: computeDifficulty(recipe)
+      }));
+
+      return res.json(formattedRecipes);
+    } finally {
+      connection.end();
+    }
+  } catch (error) {
+    console.error("Erreur home recipes :", error);
+    return res.status(500).json({ message: "Erreur serveur" });
+  }
+});
+
 // Afficher une recette + augmenter vues
 app.get("/api/recipes/:id", async (req: Request, res: Response) => {
   try {
