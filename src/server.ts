@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-const PORT = parseInt(process.env.PORT || "3000");
+const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // ---- Middlewares ----
 app.use(express.json());
@@ -60,10 +60,21 @@ type CreateRecipeData = {
   priceLevel: number;
 };
 
+type UpdateRecipeData = {
+  name: string;
+  ingredients: string;
+  servings: number;
+  ovenNeeded: boolean;
+  specificEquipmentNeeded: boolean;
+  exoticIngredients: boolean;
+  countryOfOrigin: string;
+  priceLevel: number;
+};
+
 // ---- Pool MariaDB ----
 const pool: Pool = createPool({
   host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT!),
+  port: parseInt(process.env.DB_PORT!, 10),
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
@@ -168,7 +179,7 @@ function isAuthenticated(req: Request, res: Response, next: NextFunction) {
 // ---- ROUTES API ----
 
 // Health check
-app.get("/", (req: Request, res: Response) => {
+app.get("/", (_req: Request, res: Response) => {
   res.send("Cordon-bleu API OK");
 });
 
@@ -209,7 +220,7 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
         name: dbUser.name
       };
 
-      res.json({
+      return res.json({
         message: "Connexion réussie",
         user: req.session.user
       });
@@ -218,7 +229,7 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
     }
   } catch (error) {
     console.error("Erreur login :", error);
-    res.status(500).json({ message: "Erreur serveur" });
+    return res.status(500).json({ message: "Erreur serveur" });
   }
 });
 
@@ -253,7 +264,7 @@ app.post("/api/auth/register", async (req: Request, res: Response) => {
         [name, passwordHash]
       );
 
-      res.status(201).json({
+      return res.status(201).json({
         message: "Utilisateur créé",
         id: Number(result.insertId)
       });
@@ -262,7 +273,7 @@ app.post("/api/auth/register", async (req: Request, res: Response) => {
     }
   } catch (error) {
     console.error("Erreur register :", error);
-    res.status(500).json({ message: "Erreur serveur" });
+    return res.status(500).json({ message: "Erreur serveur" });
   }
 });
 
@@ -274,7 +285,7 @@ app.post("/api/auth/logout", (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       message: "Déconnexion réussie"
     });
   });
@@ -285,7 +296,7 @@ app.get("/api/auth/me", (req: Request, res: Response) => {
     return res.status(401).json({ message: "Non authentifié" });
   }
 
-  res.json({
+  return res.json({
     user: req.session.user
   });
 });
@@ -293,7 +304,7 @@ app.get("/api/auth/me", (req: Request, res: Response) => {
 // ---- USERS ----
 
 app.get("/api/users", isAuthenticated, (req: Request, res: Response) => {
-  res.json({
+  return res.json({
     message: "Accès autorisé",
     user: req.session.user
   });
@@ -341,7 +352,7 @@ app.post("/api/recipes", isAuthenticated, async (req: Request, res: Response) =>
         ]
       );
 
-      res.status(201).json({
+      return res.status(201).json({
         message: "Recette créée",
         id: Number(result.insertId)
       });
@@ -350,12 +361,12 @@ app.post("/api/recipes", isAuthenticated, async (req: Request, res: Response) =>
     }
   } catch (error) {
     console.error("Erreur création recette :", error);
-    res.status(500).json({ message: "Erreur serveur" });
+    return res.status(500).json({ message: "Erreur serveur" });
   }
 });
 
 // Lister les recettes
-app.get("/api/recipes", async (req: Request, res: Response) => {
+app.get("/api/recipes", async (_req: Request, res: Response) => {
   try {
     const connection = await pool.getConnection();
 
@@ -372,13 +383,13 @@ app.get("/api/recipes", async (req: Request, res: Response) => {
         difficulty: computeDifficulty(recipe)
       }));
 
-      res.json(formattedRecipes);
+      return res.json(formattedRecipes);
     } finally {
       connection.end();
     }
   } catch (error) {
     console.error("Erreur liste recettes :", error);
-    res.status(500).json({ message: "Erreur serveur" });
+    return res.status(500).json({ message: "Erreur serveur" });
   }
 });
 
@@ -405,9 +416,14 @@ app.get("/api/recipes/:id", async (req: Request, res: Response) => {
         [recipeId]
       );
 
-      const recipe = recipes[0];
+      const refreshedRecipes: DbRecipe[] = await connection.query(
+        "SELECT * FROM recipes WHERE id = ?",
+        [recipeId]
+      );
 
-      res.json({
+      const recipe = refreshedRecipes[0];
+
+      return res.json({
         ...recipe,
         id: Number(recipe.id),
         authorId: Number(recipe.authorId),
@@ -419,7 +435,7 @@ app.get("/api/recipes/:id", async (req: Request, res: Response) => {
     }
   } catch (error) {
     console.error("Erreur détail recette :", error);
-    res.status(500).json({ message: "Erreur serveur" });
+    return res.status(500).json({ message: "Erreur serveur" });
   }
 });
 
@@ -443,15 +459,147 @@ app.get("/api/recipes/search/:term", async (req: Request, res: Response) => {
         difficulty: computeDifficulty(recipe)
       }));
 
-      res.json(formattedRecipes);
+      return res.json(formattedRecipes);
     } finally {
       connection.end();
     }
   } catch (error) {
     console.error("Erreur recherche recette :", error);
-    res.status(500).json({ message: "Erreur serveur" });
+    return res.status(500).json({ message: "Erreur serveur" });
   }
 });
+
+// Modifier une recette
+app.put("/api/recipes/:id", isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const recipeId = parseInt(String(req.params.id), 10);
+    const data: UpdateRecipeData = req.body;
+
+    const connection = await pool.getConnection();
+
+    try {
+      const recipes: DbRecipe[] = await connection.query(
+        "SELECT * FROM recipes WHERE id = ?",
+        [recipeId]
+      );
+
+      if (recipes.length === 0) {
+        return res.status(404).json({ message: "Recette introuvable" });
+      }
+
+      await connection.query(
+        `UPDATE recipes SET
+          name = ?,
+          ingredients = ?,
+          servings = ?,
+          ovenNeeded = ?,
+          specificEquipmentNeeded = ?,
+          exoticIngredients = ?,
+          countryOfOrigin = ?,
+          priceLevel = ?
+         WHERE id = ?`,
+        [
+          data.name,
+          data.ingredients,
+          data.servings,
+          data.ovenNeeded,
+          data.specificEquipmentNeeded,
+          data.exoticIngredients,
+          data.countryOfOrigin,
+          data.priceLevel,
+          recipeId
+        ]
+      );
+
+      return res.json({ message: "Recette modifiée" });
+    } finally {
+      connection.end();
+    }
+  } catch (error) {
+    console.error("Erreur modification recette :", error);
+    return res.status(500).json({ message: "Erreur serveur" });
+  }
+});
+
+// Supprimer une recette
+app.delete("/api/recipes/:id", isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const recipeId = parseInt(String(req.params.id), 10);
+    const connection = await pool.getConnection();
+
+    try {
+      const recipes: DbRecipe[] = await connection.query(
+        "SELECT * FROM recipes WHERE id = ?",
+        [recipeId]
+      );
+
+      if (recipes.length === 0) {
+        return res.status(404).json({ message: "Recette introuvable" });
+      }
+
+      await connection.query("DELETE FROM recipes WHERE id = ?", [recipeId]);
+
+      return res.json({ message: "Recette supprimée" });
+    } finally {
+      connection.end();
+    }
+  } catch (error) {
+    console.error("Erreur suppression recette :", error);
+    return res.status(500).json({ message: "Erreur serveur" });
+  }
+});
+
+// Dupliquer une recette
+app.post(
+  "/api/recipes/:id/duplicate",
+  isAuthenticated,
+  async (req: Request, res: Response) => {
+    try {
+      const recipeId = parseInt(String(req.params.id), 10);
+      const connection = await pool.getConnection();
+
+      try {
+        const recipes: DbRecipe[] = await connection.query(
+          "SELECT * FROM recipes WHERE id = ?",
+          [recipeId]
+        );
+
+        if (recipes.length === 0) {
+          return res.status(404).json({ message: "Recette introuvable" });
+        }
+
+        const r = recipes[0];
+
+        const result = await connection.query(
+          `INSERT INTO recipes
+          (name, ingredients, servings, ovenNeeded, specificEquipmentNeeded, exoticIngredients, countryOfOrigin, priceLevel, authorId)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            `${r.name} (copy)`,
+            r.ingredients,
+            r.servings,
+            r.ovenNeeded,
+            r.specificEquipmentNeeded,
+            r.exoticIngredients,
+            r.countryOfOrigin,
+            r.priceLevel,
+            req.session.user!.id
+          ]
+        );
+
+        return res.status(201).json({
+          message: "Recette dupliquée",
+          id: Number(result.insertId)
+        });
+      } finally {
+        connection.end();
+      }
+    } catch (error) {
+      console.error("Erreur duplication recette :", error);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+  }
+);
 
 // ---- START ----
 async function startServer() {
