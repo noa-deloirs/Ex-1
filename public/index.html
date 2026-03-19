@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Frontend Express</title>
+</head>
+<body>
+  <h1>Accueil</h1>
+  <p>Frontend HTML servi par Express static.</p>
+
+  <h2>Connexion</h2>
+  <form action="/login" method="POST">
+    <div>
+      <label>Username :</label>
+      <input type="text" name="username" />
+    </div>
+    <br />
+    <div>
+      <label>Password :</label>
+      <input type="password" name="password" />
+    </div>
+    <br />
+    <button type="submit">Se connecter</button>
+  </form>
+
+  <br />
+  <a href="/secret.html">Aller sur la page secret.html</a>
+  <br /><br />
+  <a href="/me">Voir ma session</a>
+  <br />
+  <a href="/private">Voir la route privée</a>
+  <br />
+  <a href="/logout">Se déconnecter</a>
+</body>
+</html>
