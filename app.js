@@ -3,17 +3,17 @@ const session = require("express-session");
 const path = require("path");
 const mariadb = require("mariadb");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Lire le JSON
+// Middlewares
 app.use(express.json());
-
-// Lire le x-www-form-urlencoded
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// Session
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "mon_secret_session",
@@ -22,7 +22,7 @@ app.use(
   })
 );
 
-// Plugin static pour servir le frontend HTML
+// Static frontend
 app.use(express.static(path.join(__dirname, "public")));
 
 // Pool MariaDB
@@ -35,7 +35,7 @@ const pool = mariadb.createPool({
   connectionLimit: 10
 });
 
-// ----------- FONCTIONS BDD -----------
+// ---------------- BDD ----------------
 
 async function schemaExist() {
   const connection = await pool.getConnection();
@@ -80,19 +80,39 @@ async function deleteSchema() {
   }
 }
 
-// ----------- ROUTES -----------
+// ---------------- AUTH JWT ----------------
 
-// Route de base API
+function checkAuth(req, res, next) {
+  try {
+    const token = req.cookies.token;
+
+    if (!token) {
+      return res.status(401).json({
+        message: "Token manquant"
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      message: "Token invalide"
+    });
+  }
+}
+
+// ---------------- ROUTES ----------------
+
 app.get("/api", (req, res) => {
   res.send("API Express OK");
 });
 
-// GET /hello/remy
 app.get("/hello/:name", (req, res) => {
   res.send(`Hello ${req.params.name}`);
 });
 
-// POST /user en urlencoded
 app.post("/user", (req, res) => {
   res.json({
     message: "Utilisateur reçu",
@@ -100,7 +120,6 @@ app.post("/user", (req, res) => {
   });
 });
 
-// POST /course en JSON
 app.post("/course", (req, res) => {
   res.json({
     message: "Cours reçu",
@@ -108,7 +127,6 @@ app.post("/course", (req, res) => {
   });
 });
 
-// GET /test avec body JSON
 app.get("/test", (req, res) => {
   res.json({
     message: "Route test OK",
@@ -116,7 +134,6 @@ app.get("/test", (req, res) => {
   });
 });
 
-// Test connexion BDD
 app.get("/db-test", async (req, res) => {
   try {
     const connection = await pool.getConnection();
@@ -136,9 +153,7 @@ app.get("/db-test", async (req, res) => {
   }
 });
 
-// ----------- SESSION + LOGIN BDD -----------
-
-// Login avec BDD
+// LOGIN : vérifie user + crée JWT + met le token en cookie
 app.post("/login", async (req, res) => {
   try {
     const loginData = req.body;
@@ -148,13 +163,10 @@ app.post("/login", async (req, res) => {
       "SELECT * FROM users WHERE name = ?",
       [loginData.name]
     );
-
-    console.log("users", dbUsers);
     connection.end();
 
     if (dbUsers.length === 0) {
-      res.sendStatus(401);
-      return;
+      return res.sendStatus(401);
     }
 
     const dbUser = dbUsers[0];
@@ -165,18 +177,27 @@ app.post("/login", async (req, res) => {
     );
 
     if (!isPasswordValid) {
-      res.sendStatus(401);
-      return;
+      return res.sendStatus(401);
     }
 
-    req.session.user = {
-      id: dbUser.id,
-      name: dbUser.name
-    };
+    const token = jwt.sign(
+      {
+        id: dbUser.id,
+        name: dbUser.name
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "1h"
+      }
+    );
+
+    res.cookie("token", token, {
+      httpOnly: true
+    });
 
     res.json({
       message: "Connexion réussie",
-      user: req.session.user
+      token: token
     });
   } catch (error) {
     console.error("Erreur login :", error);
@@ -187,51 +208,52 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// Vérif auth
-app.get("/me", (req, res) => {
-  if (req.session.user) {
-    return res.json({
-      message: "Utilisateur connecté",
-      user: req.session.user
-    });
-  }
-
-  res.status(401).json({
-    message: "Non authentifié"
-  });
-});
-
-// Donnée protégée
-app.get("/private", (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({
-      message: "Accès refusé, veuillez vous connecter"
-    });
-  }
-
-  res.json({
-    message: "Bienvenue sur la route privée",
-    secretData: "Voici les données secrètes",
-    user: req.session.user
-  });
-});
-
-// Logout
-app.get("/logout", (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({
-        message: "Erreur lors de la déconnexion"
-      });
-    }
+// Route protégée avec middleware
+app.get("/api/users", checkAuth, async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+    const users = await connection.query("SELECT id, name FROM users");
+    connection.end();
 
     res.json({
-      message: "Déconnexion réussie"
+      message: "Accès autorisé",
+      connectedUser: req.user,
+      users: users
     });
+  } catch (error) {
+    console.error("Erreur /api/users :", error);
+    res.status(500).json({
+      message: "Erreur serveur",
+      error: error.message
+    });
+  }
+});
+
+// Anciennes routes conservées
+app.get("/me", (req, res) => {
+  res.json({
+    message: "Cette route utilisait la session",
+    note: "Maintenant l'auth principale passe par JWT + cookie"
   });
 });
 
-// ----------- DÉMARRAGE -----------
+app.get("/private", checkAuth, (req, res) => {
+  res.json({
+    message: "Bienvenue sur la route privée",
+    user: req.user
+  });
+});
+
+// LOGOUT : suppression du cookie
+app.get("/logout", (req, res) => {
+  res.clearCookie("token");
+
+  res.json({
+    message: "Déconnexion réussie"
+  });
+});
+
+// ---------------- START ----------------
 
 async function startServer() {
   try {
