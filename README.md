@@ -24,8 +24,7 @@ API REST pour l'application Cordon-bleu.
 - POST /api/recipes/:id/duplicate : dupliquer une recette
 - PUT /api/recipes/:id : modifier une recette
 - DELETE /api/recipes/:id : supprimer une recette
-
-## Règles métier
+- GET /api/recipes/home : récupérer les 10 recettes les plus consultées pour la page d'accueil
 
 ### Difficulté
 - Difficile : four + matériel spécifique + ingrédients exotiques
