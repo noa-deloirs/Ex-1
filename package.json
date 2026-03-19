@@ -2,29 +2,15 @@
   "name": "ex-1---bruno",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "main": "app.js",
   "type": "commonjs",
+  "scripts": {
+    "dev": "node --env-file=.env app.js"
+  },
   "dependencies": {
     "bcrypt": "^6.0.0",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "mariadb": "^3.5.2"
-  },
-  "devDependencies": {
-    "@types/bcrypt": "^6.0.0",
-    "@types/express": "^5.0.6",
-    "@types/express-session": "^1.18.2",
-    "typescript": "^5.9.3"
   }
-  {
-  "scripts": {
-    "dev": "node --env-file=.env --watch src/server.ts"
-  }
-}
 }
